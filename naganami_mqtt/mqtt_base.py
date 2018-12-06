@@ -1,19 +1,26 @@
 # coding: utf-8
 from logging import getLogger, NullHandler
-logger = getLogger('mqtt_controller')
+logger = getLogger(__name__)
 logger.addHandler(NullHandler())
 
 import paho.mqtt.client
 import json
 import time
+import os
 
 class MqttController(object):
-    def __init__(self, name, host, port=1883, user=None, password=None, connect=True, rwt_retain=True, logger=logger):
+
+    def __init__(self, name, host, port=1883, user=None, password=None, ca_certs=None, certfile=None, keyfile=None, connect=True, rwt_use=True, rwt_retain=True, logger=logger):
         self.name = name
         self.port = int(port)
         self.host = host
         self.rwt_retain = rwt_retain
         self.logger = logger
+        self.rwt_use = rwt_use
+
+        self.ca_certs = ca_certs
+        self.certfile = certfile
+        self.keyfile = keyfile
 
         self.client = paho.mqtt.client.Client(protocol=paho.mqtt.client.MQTTv311)
 
@@ -21,9 +28,15 @@ class MqttController(object):
             self.logger.debug('set user: %s, passowrd: *****', user)
             self.client.username_pw_set(user, password=password)
 
+        if ca_certs:
+            self.logger.info('set tls.')
+            self.client.tls_set(ca_certs=self.ca_certs, certfile=self.certfile, keyfile=self.keyfile)
+
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
-        self.client.will_set('stat/{0}/LWT'.format(self.name), payload='Offline', qos=1, retain=self.lwt_retain)
+
+        if self.rwt_use:
+            self.client.will_set('stat/{0}/LWT'.format(self.name), payload='Offline', qos=1, retain=self.rwt_retain)
 
         if connect:
             self.connect()
@@ -40,9 +53,16 @@ class MqttController(object):
 
         raise IOError()
 
+
     def _on_connect(self, client, userdata, flags, respons_code):
-        client.subscribe('+/{0}/+'.format(self.name))
-        client.publish('stat/{0}/LWT'.format(self.name), 'Online', retain=self.lwt_retain)
+        client.subscribe('+/{0}/#'.format(self.name))
+        if self.rwt_use:
+            client.publish('stat/{0}/LWT'.format(self.name), 'Online', retain=self.rwt_retain)
+
+        self.on_connect(client, userdata, flags, respons_code)
+
+    def on_connect(self, client, userdata, flags, respons_code):
+        pass
 
     def _on_message(self, client, userdata, msg):
         r = parse(msg.topic)
@@ -119,9 +139,11 @@ class MqttController(object):
         # self.publish_status('status', json.dumps(getStatus()))
         return None
 
+    def cmd_ping(self, payload):
+        return 'pong'
+
     def _command(self, client, command, payload):
         pass
-
 
 import re
 
@@ -138,3 +160,4 @@ def parse(topic):
         'name': r.group('name'),
         'topic': r.group('topic'),
     }
+
