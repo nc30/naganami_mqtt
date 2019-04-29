@@ -1,7 +1,7 @@
 # coding: utf-8
 from logging import getLogger, NullHandler
-logger = getLogger(__name__)
-logger.addHandler(NullHandler())
+libLogger = getLogger(__name__)
+libLogger.addHandler(NullHandler())
 
 import paho.mqtt.client
 import json
@@ -9,8 +9,15 @@ import time
 import os
 
 class MqttController(object):
+    logger = libLogger
 
-    def __init__(self, name, host, port=1883, user=None, password=None, ca_certs=None, certfile=None, keyfile=None, connect=True, rwt_use=True, rwt_retain=True, logger=logger):
+    def __init__(self, name, host,
+                port=1883, user=None, password=None,
+                ca_certs=None, certfile=None, keyfile=None,
+                connect=True, rwt_use=True, rwt_retain=True, logger=None):
+        if logger is not None:
+            self.logger = logger
+
         self.name = name
         self.port = int(port)
         self.host = host
@@ -33,6 +40,7 @@ class MqttController(object):
             self.client.tls_set(ca_certs=self.ca_certs, certfile=self.certfile, keyfile=self.keyfile)
 
         self.client.on_connect = self._on_connect
+        # self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
 
         if self.rwt_use:
@@ -55,6 +63,7 @@ class MqttController(object):
 
 
     def _on_connect(self, client, userdata, flags, respons_code):
+        self.logger('_on_connect function')
         client.subscribe('+/{0}/#'.format(self.name))
         if self.rwt_use:
             client.publish('stat/{0}/LWT'.format(self.name), 'Online', retain=self.rwt_retain)
@@ -64,10 +73,18 @@ class MqttController(object):
     def on_connect(self, client, userdata, flags, respons_code):
         pass
 
+    def _on_disconnect(self, client, userdata, rc):
+        self.logger.debug('disconnected rc=%s', rc)
+        self.on_disconnect(self, client, userdata, rc)
+
+    def on_disconnect(self, client, userdata, rc):
+        pass
+
     def _on_message(self, client, userdata, msg):
+        self.logger.debug('receive message. %s, %s', msg.topic, msg.payload)
         r = parse(msg.topic)
         if r is None:
-            self.logger.debug('pass %s', msg.topic)
+            self.logger.debug('throught %s', msg.topic)
             return
 
         self._recieve_message(r, msg)
@@ -84,7 +101,7 @@ class MqttController(object):
         self.client.disconnect()
 
     def publish(self, *args, **kwargs):
-        self.logger.debug(args)
+        self.logger.debug('publish %s', args)
         self.client.publish(*args, **kwargs)
 
     def publish_status(self, stat, message):
