@@ -7,19 +7,6 @@ import time
 
 SUTATUSES = ["IN_PROGRESS", "FAILED", "SUCCEEDED", "REJECTED"]
 
-from functools import wraps
-def executeWrapper(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        try:
-            return f
-        except Exception as e:
-            logger.exception(e)
-        return False
-    return wrapper
-
-
-
 class JobScenario:
     client = None
     thingName = ''
@@ -35,14 +22,22 @@ class JobScenario:
         self.thingName = thingName
         self.jobDocument = jobDocument
 
-
-    @executeWrapper
-    def exec(self, jobDocument):
-        pass
+    def _exec(self):
+        logger.debug("start job scenario.")
+        try:
+            r = self.exec(self.jobDocument)
+            if r:
+                self.changeStatus('SUCCEEDED', {"reason": "progress success."})
+        except Exception as e:
+            logger.exception(e)
+            self.changeStatus('FAILED', {"reason": "execution failed."})
 
     def _throw_job(self):
-        d = Thread(target=self.exec, args=(self.jobDocument,))
+        logger.debug('_throw_job function.')
+        d = Thread(target=self._exec, daemon=False)
         d.start()
+        logger.debug('throwed.')
+        return d
 
     @staticmethod
     def valid(self, jobDocument):
@@ -55,6 +50,7 @@ class JobScenario:
         self.status = status
         self._jobs_update(self.versionNumber, None, self.status, details)
         self.versionNumber += 1
+        time.sleep(1)
 
     def _jobs_update(self, expectedVersion, clientToken, status='IN_PROGRESS', details={}):
         topic = '$aws/things/{0}/jobs/{1}/update'.format(self.thingName, self.jobId)
@@ -67,23 +63,3 @@ class JobScenario:
         logger.debug('publish %s %s', topic, json.dumps(report))
         self.client.publish(topic, json.dumps(report))
         time.sleep(1)
-
-
-if __name__ == '__main__':
-    class sample(JobScenario):
-        def exec(self, jobDocument):
-            logger.debug(self)
-            logger.debug(document)
-            raise TypeError()
-
-    import time
-    import logging
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(logging.StreamHandler())
-    logger.debug("aaaaaaaaa")
-
-    job = sample('testjob', 123, 123,123,123,{'ni':'naganami'})
-
-    job._throw_job()
-
-    time.sleep(10)

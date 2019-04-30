@@ -9,15 +9,12 @@ import time
 import os
 
 class MqttController(object):
-    logger = libLogger
-
     def __init__(self, name, host,
                 port=1883, user=None, password=None,
                 ca_certs=None, certfile=None, keyfile=None,
-                connect=True, rwt_use=True, rwt_retain=True, logger=None):
-        if logger is not None:
-            self.logger = logger
-
+                connect=True, rwt_use=True, rwt_retain=True, logger=libLogger
+        ):
+        self.logger = libLogger
         self.name = name
         self.port = int(port)
         self.host = host
@@ -40,7 +37,7 @@ class MqttController(object):
             self.client.tls_set(ca_certs=self.ca_certs, certfile=self.certfile, keyfile=self.keyfile)
 
         self.client.on_connect = self._on_connect
-        # self.client.on_disconnect = self._on_disconnect
+        self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
 
         if self.rwt_use:
@@ -61,9 +58,7 @@ class MqttController(object):
 
         raise IOError()
 
-
     def _on_connect(self, client, userdata, flags, respons_code):
-        self.logger('_on_connect function')
         client.subscribe('+/{0}/#'.format(self.name))
         if self.rwt_use:
             client.publish('stat/{0}/LWT'.format(self.name), 'Online', retain=self.rwt_retain)
@@ -151,10 +146,6 @@ class MqttController(object):
         except Exception as e:
             self.logger.exception(e)
             return 'error spawn'
-
-    def cmd_status(self, payload):
-        # self.publish_status('status', json.dumps(getStatus()))
-        return None
 
     def cmd_ping(self, payload):
         return 'pong'
