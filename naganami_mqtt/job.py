@@ -15,7 +15,13 @@ IN_PROGRESS = 'in-progress'
 DONE = 'done'
 FAILED = 'failed'
 
+class CommunicationError(Exception):
+    pass
+
 class QueueTimeoutError(Exception):
+    pass
+
+class Harakiri(Exception):
     pass
 
 class JobScenario:
@@ -72,37 +78,49 @@ class JobScenario:
 
                 logger.info('do job "%s"', seq['name'])
                 self.statusDetails[seq['name']] = IN_PROGRESS
-                self.changeStatus(status='PROGRESS', details=self.statusDetails)
+                self.changeStatus(status='IN_PROGRESS')
 
                 try:
                     sequence(self.jobDocument, self.statusDetails)
                     self.statusDetails[seq['name']] = DONE
-                    self.changeStatus(status='IN_PROGRESS', details=self.statusDetails)
+                    self.changeStatus(status='IN_PROGRESS')
+
+                except Harakiri:
+                    logger.info('haiku wo yome.')
+                    return
 
                 except Exception as e:
                     logger.exception(e)
                     self.statusDetails[seq['name']] = FAILED
-                    self.changeStatus(status='FAILED', details=self.statusDetails)
+                    self.changeStatus(status='FAILED')
                     return False
-        self.changeStatus(status='SUCCEEDED', details=self.statusDetails)
+        self.changeStatus(status='SUCCEEDED')
+        logger.info('job secuence all done.')
 
     def _throw_job(self):
-        logger.debug('_throw_job function.')
         d = Thread(target=self._exec, daemon=False)
         d.start()
         logger.debug('throwed.')
         return d
 
+    def kill_my_self(self):
+        raise Harakiri()
+
     def valid(self, jobDocument):
         return False
 
-    def changeStatus(self, status='PROGRESS', details={}):
+    def changeStatus(self, status='IN_PROGRESS'):
         if status not in SUTATUSES:
-            return
+            raise KeyError(str(status) + ' is invalid status.')
 
         self.status = status
-        self._jobs_update(self.versionNumber, self.status, details)
-        self.versionNumber += 1
+        for i in range(3):
+            r = self._jobs_update(self.versionNumber, self.status, self.statusDetails)
+            if r:
+                self.versionNumber += 1
+                return
+            time.sleep(1)
+        raise CommunicationError()
 
     def wait_topic(self, topics, func, timeout=5):
         self.wait_message = None
@@ -119,8 +137,8 @@ class JobScenario:
     def wait(self, client, userdata, msg):
         self.wait_message = msg
 
-    def _jobs_update(self, expectedVersion, status='IN_PROGRESS', details={}, force=False):
-        clientToken = uuid.uuid4().int
+    def _jobs_update(self, expectedVersion, status, details, force=False):
+        clientToken = uuid.uuid4().urn
         def func():
             topic = '$aws/things/{0}/jobs/{1}/update'.format(self.thingName, self.jobId)
             report = {
@@ -129,7 +147,6 @@ class JobScenario:
               "expectedVersion": expectedVersion,
               "clientToken": clientToken
             }
-            logger.debug('publish %s %s', topic, json.dumps(report))
             self.controller.publish(topic, json.dumps(report))
 
         if force:
@@ -145,5 +162,8 @@ class JobScenario:
             timeout = 10
         )
 
-        if json.loads(msg.payload.decode())['clientToken'][-9:] == 'accepted':
-            return True
+        if json.loads(msg.payload.decode())['clientToken'] == clientToken:
+            if msg.topic[-9:] == '/accepted':
+                return True
+
+        return False

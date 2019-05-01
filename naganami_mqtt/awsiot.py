@@ -121,8 +121,8 @@ class AwsIotContoller(MqttController):
         if jobSchenario:
             self.currentJob = jobSchenario._throw_job()
         else:
-            self.job_update(job['jobId'], job['versionNumber'], None, 'REJECTED', {"reason": "jobScenario not found."})
-            return
+            self.job_update(job['jobId'], job['versionNumber'], None, 'REJECTED', {"reason": "Unknown Job."})
+        return
 
     def job_update(self, jobId, expectedVersion, clientToken, status='IN_PROGRESS', details={}):
         topic = '$aws/things/{0}/jobs/{1}/update'.format(self.name, jobId)
@@ -146,6 +146,7 @@ class AwsIotContoller(MqttController):
                     executionNumber=job['executionNumber'],
                     versionNumber=job['versionNumber'],
                     jobDocument=job['jobDocument'],
+                    statusDetails=job.get('statusDetails', None),
                     thingName=self.name
                 )
         return False

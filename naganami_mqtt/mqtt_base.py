@@ -197,14 +197,14 @@ class MqttController(object):
                 r = func(payload)
             except Exception as e:
                 self.logger.exception(e)
-                return 'error'
+                r = 'error'
 
         except (TypeError, AttributeError):
             try:
                 r = self.command(self.client, command, payload)
             except Exception as e:
                 self.logger.exception(e)
-                return 'error'
+                r = 'error'
 
         if r is not None:
             if type(r) == tuple:
@@ -214,7 +214,8 @@ class MqttController(object):
                 payload = r
                 topic = None
 
-        self.publish_result(command.lower(), payload, topic=topic)
+            self.publish_result(command.lower(), payload, topic=topic)
+
 
     def cmd_naganami_sama(self, payload):
         return 'kawaii'
