@@ -1,7 +1,6 @@
 # coding: utf-8
-from logging import getLogger, NullHandler
-logger = getLogger()
-logger.addHandler(NullHandler())
+from logging import getLogger
+logger = getLogger(__name__)
 
 import re
 import os
@@ -57,20 +56,15 @@ class AwsIotContoller(MqttController):
             *args, **kwargs
         )
 
-    def _on_connect(self, client, userdata, flags, respons_code):
-        try:
-            self.logger.debug('on connect function')
-            client.subscribe('$aws/things/{0}/shadow/update/delta'.format(self.name))
-            client.subscribe('$aws/things/{0}/jobs/+/get/accepted'.format(self.name))
-            client.subscribe('$aws/things/{0}/jobs/notify-next'.format(self.name))
+    def _set_subscribe_topics(self, client, userdata, flags, respons_code):
+        self.logger.debug('_set_subscribe_topics function')
+        client.subscribe('$aws/things/{0}/shadow/update/delta'.format(self.name))
+        client.subscribe('$aws/things/{0}/jobs/+/get/accepted'.format(self.name))
+        client.subscribe('$aws/things/{0}/jobs/$next/get/accepted'.format(self.name))
+        client.subscribe('$aws/things/{0}/jobs/notify-next'.format(self.name))
+        super(AwsIotContoller, self)._set_subscribe_topics(client, userdata, flags, respons_code)
 
-            super(AwsIotContoller, self)._on_connect(client, userdata, flags, respons_code)
-        except Exception as e:
-            self.logger.exception(e)
-
-
-    def _on_message(self, client, userdata, msg):
-        logger.debug('receive message %s %s', msg.topic, msg.payload)
+    def _parse_topics(self, client, userdata, msg):
         try:
             if msg.topic == '$aws/things/{0}/shadow/update/delta'.format(self.name):
                 self._delta_function(client, userdata, msg)
@@ -90,8 +84,7 @@ class AwsIotContoller(MqttController):
         except Exception as e:
             self.logger.exception(e)
 
-
-        super(AwsIotContoller, self)._on_message(client, userdata, msg)
+        super(AwsIotContoller, self)._parse_topics(client, userdata, msg)
 
     def _jobs_get_accepted(self, client, userdata, msg):
         self.logger.debug('get job accepted.')
@@ -126,12 +119,10 @@ class AwsIotContoller(MqttController):
         jobSchenario = self._job_check(job)
 
         if jobSchenario:
-            jobSchenario.changeStatus('IN_PROGRESS', {"reason": "throw job."})
-            time.sleep(1)
             self.currentJob = jobSchenario._throw_job()
         else:
-            self.job_update(job['jobId'], job['versionNumber'], None, 'REJECTED', {"reason": "jobScenario not found."})
-            return
+            self.job_update(job['jobId'], job['versionNumber'], None, 'REJECTED', {"reason": "Unknown Job."})
+        return
 
     def job_update(self, jobId, expectedVersion, clientToken, status='IN_PROGRESS', details={}):
         topic = '$aws/things/{0}/jobs/{1}/update'.format(self.name, jobId)
@@ -147,13 +138,15 @@ class AwsIotContoller(MqttController):
         for scenario in self.jobScenarios:
             if scenario.valid(job['jobDocument']):
                 return scenario(
-                    job['jobId'],
+                    jobId=job['jobId'],
+                    status=job['status'],
+                    controller=self,
                     queuedAt=job['queuedAt'],
                     lastUpdatedAt=job['lastUpdatedAt'],
                     executionNumber=job['executionNumber'],
                     versionNumber=job['versionNumber'],
                     jobDocument=job['jobDocument'],
-                    client=self.client,
+                    statusDetails=job.get('statusDetails', None),
                     thingName=self.name
                 )
         return False
