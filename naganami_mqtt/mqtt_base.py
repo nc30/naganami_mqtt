@@ -28,7 +28,7 @@ class MqttController(object):
         self.certfile = certfile
         self.keyfile = keyfile
 
-        self.client = paho.mqtt.client.Client(protocol=paho.mqtt.client.MQTTv311)
+        self.client = paho.mqtt.client.Client(client_id=self.name, protocol=paho.mqtt.client.MQTTv311)
 
         if user:
             self.logger.debug('set user: %s, passowrd: *****', user)

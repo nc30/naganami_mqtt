@@ -5,7 +5,7 @@ requires = ['paho-mqtt']
 
 setup(
     name = "naganami_mqtt",
-    version = '0.0.6',
+    version = '0.0.7',
     install_requires = requires,
     author = 'Himura Asahi',
     author_email = 'himura@nitolab.com',
